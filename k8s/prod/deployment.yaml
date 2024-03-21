@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app
+  namespace: production
+spec:
+  replicas: 1   # You can adjust the number of replicas as needed
+  selector:
+    matchLabels:
+      app: my-app
+  template:
+    metadata:
+      labels:
+        app: my-app
+    spec:
+      containers:
+        - name: my-app
+          image: 'asia-southeast1-docker.pkg.dev/example-folder/my-app/my-app:v1'#example-zone.pkg.dev/path/path/image-name:v1
+          ports:
+            - containerPort: 3000

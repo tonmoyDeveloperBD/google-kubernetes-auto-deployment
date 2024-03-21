@@ -1,0 +1,67 @@
+name: Deploy My App to Google Kubernetes Engine
+
+on:
+  push:
+    branches:
+      - development
+      - production
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      PROJECT_ID: ${secrets.PROJECT_ID}
+      SERVICE_ACCOUNT_KEY: ${{ secrets.GKE_SERVICE_DEV }}
+      REGION: "asia-southeast1" # <--- Example zone
+      CLUSTER_NAME: 'backend-cluster'
+      DEPLOYMENT_MANIFEST_PATH: ${{ github.ref == 'refs/heads/development' && 'k8s/dev/deployment.yaml' || 'k8s/prd/deployment.yaml' }}
+      SERVICE_MANIFEST_PATH: ${{ github.ref == 'refs/heads/development' && 'k8s/dev/service.yaml' || 'k8s/prd/service.yaml'}}
+      INGRESS_MANIFEST_PATH: ${{ github.ref == 'refs/heads/development' && 'k8s/dev/ingress.yaml' || 'k8s/prd/ingress.yaml'}}
+
+
+    steps:
+      - name: code checkout
+        uses: actions/checkout@v2
+
+      - name: install the gcloud cli
+        uses: google-github-actions/setup-gcloud@v0
+        with:
+          project_id: ${{ env.PROJECT_ID}}
+          service_account_key: ${{ env.SERVICE_ACCOUNT_KEY }}
+          export_default_credentials: true
+
+      - name: Getting credentials
+        run: |
+          gcloud components install kubectl
+          gcloud container clusters get-credentials ${{ env.CLUSTER_NAME }} --region=${{ env.REGION }}
+    
+
+      - name: Build and push the my-app Docker image to Google Artifact Registry (GAR)
+        run: |
+          gcloud auth configure-docker asia-southeast1-docker.pkg.dev
+          docker build -t asia-southeast1-docker.pkg.dev/example-folder/my-app/my-app:v1 .
+          docker push asia-southeast1-docker.pkg.dev/example-folder/my-app/my-app:v1
+
+
+
+      - name: Deploy to Dev Cluster
+        if: startsWith(github.ref, 'refs/heads/development/')
+        run: |
+          gcloud components install gke-gcloud-auth-plugin
+          export USE_GKE_GCLOUD_AUTH_PLUGIN=True
+          gcloud container clusters get-credentials ${{ env.CLUSTER_NAME }} --region=${{ env.REGION }}
+          kubectl apply -f ${{ env.DEPLOYMENT_MANIFEST_PATH }}
+          kubectl apply -f ${{ env.SERVICE_MANIFEST_PATH }}
+          kubectl apply -f ${{ env.DEPLOYMENT_MANIFEST_PATH }}
+
+
+      - name: Deploy to Live Cluster
+        if: github.ref == 'refs/heads/production'
+        run: |
+          gcloud components install gke-gcloud-auth-plugin
+          export USE_GKE_GCLOUD_AUTH_PLUGIN=True
+          gcloud container clusters get-credentials ${{ env.CLUSTER_NAME }} --region=${{ env.REGION }}
+          kubectl apply -f ${{ env.DEPLOYMENT_MANIFEST_PATH }}
+          kubectl apply -f ${{ env.SERVICE_MANIFEST_PATH }}
+          kubectl apply -f ${{ env.INGRESS_MANIFEST_PATH }}
